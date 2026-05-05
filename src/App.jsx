@@ -1,4 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_KEY
+);
 
 const fmt = (n) => Math.round(n).toLocaleString("ja-JP") + " 円";
 const timeToMin = (t) => {
@@ -91,6 +97,9 @@ const LOCATION_HINTS = {
 };
 
 export default function App() {
+  const [eventId, setEventId] = useState(null);
+  const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved | error
+
   const [eventName, setEventName] = useState("サッポロモノヴィレッジ");
   const [location, setLocation] = useState("北海道 札幌市");
   const [dateStart, setDateStart] = useState("2026-05-02");
@@ -120,6 +129,120 @@ export default function App() {
   const [salesD1, setSalesD1] = useState(244200);
   const [salesD2, setSalesD2] = useState(118600);
 
+  const [memo, setMemo] = useState("");
+
+  // 起動時に最新イベントを読み込む
+  useEffect(() => {
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("events")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error || !data) return;
+      applyData(data);
+    };
+    load();
+  }, []);
+
+  const applyData = (d) => {
+    setEventId(d.id);
+    setEventName(d.name ?? "");
+    setLocation(d.location ?? "");
+    setDateStart(d.date_start ?? "");
+    setDateEnd(d.date_end ?? "");
+    setTimeStart(d.time_start ?? "");
+    setTimeEnd(d.time_end ?? "");
+    setTargetSales(d.target_sales ?? 0);
+    setBooth(d.booth ?? 0);
+    setTransport(d.transport ?? 0);
+    setHotel(d.hotel ?? 0);
+    setShipOut(d.ship_out ?? 0);
+    setShipIn(d.ship_in ?? 0);
+    setShipOther(d.ship_other ?? 0);
+    setRental(d.rental ?? 0);
+    setAd(d.ad ?? 0);
+    setOther(d.other ?? 0);
+    setHourlyRate(d.hourly_rate ?? 3000);
+    setWorkDays(d.work_days ?? 1);
+    setCogsRate(d.cogs_rate ?? 30);
+    setStayBudget(d.stay_budget ?? 0);
+    setStayUsed(d.stay_used ?? 0);
+    setAvgPrice(d.avg_price ?? 24000);
+    setSalesD1(d.sales_d1 ?? 0);
+    setSalesD2(d.sales_d2 ?? 0);
+    setMemo(d.memo ?? "");
+  };
+
+  const buildPayload = () => ({
+    name: eventName,
+    location,
+    date_start: dateStart,
+    date_end: dateEnd,
+    time_start: timeStart,
+    time_end: timeEnd,
+    target_sales: targetSales,
+    booth,
+    transport,
+    hotel,
+    ship_out: shipOut,
+    ship_in: shipIn,
+    ship_other: shipOther,
+    rental,
+    ad,
+    other,
+    hourly_rate: hourlyRate,
+    work_days: workDays,
+    cogs_rate: cogsRate,
+    stay_budget: stayBudget,
+    stay_used: stayUsed,
+    avg_price: avgPrice,
+    sales_d1: salesD1,
+    sales_d2: salesD2,
+    memo,
+  });
+
+  const handleSave = async () => {
+    setSaveStatus("saving");
+    const payload = buildPayload();
+    let error;
+    if (eventId) {
+      ({ error } = await supabase.from("events").update(payload).eq("id", eventId));
+    } else {
+      const { data, error: e } = await supabase.from("events").insert(payload).select().single();
+      error = e;
+      if (!error && data) setEventId(data.id);
+    }
+    if (error) {
+      console.error(error);
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } else {
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    }
+  };
+
+  const handleNew = () => {
+    setEventId(null);
+    setEventName("");
+    setLocation("");
+    setDateStart("");
+    setDateEnd("");
+    setTimeStart("10:00");
+    setTimeEnd("17:00");
+    setTargetSales(0);
+    setBooth(0); setTransport(0); setHotel(0);
+    setShipOut(0); setShipIn(0); setShipOther(0);
+    setRental(0); setAd(0); setOther(0);
+    setHourlyRate(3000); setWorkDays(1); setCogsRate(30);
+    setStayBudget(0); setStayUsed(0);
+    setAvgPrice(24000); setSalesD1(0); setSalesD2(0);
+    setMemo("");
+    setSaveStatus("idle");
+  };
+
   const shipping = shipOut + shipIn + shipOther;
   const actualSales = salesD1 + salesD2;
 
@@ -145,8 +268,30 @@ export default function App() {
     }
   }, []);
 
+  const saveLabel = saveStatus === "saving" ? "保存中..." : saveStatus === "saved" ? "✓ 保存済" : saveStatus === "error" ? "エラー" : "保存";
+  const saveColor = saveStatus === "saved" ? "var(--c-success)" : saveStatus === "error" ? "var(--c-danger)" : "var(--c-accent)";
+
   return (
     <div style={{ padding: "1.5rem 1rem", maxWidth: 640, margin: "0 auto" }}>
+
+      {/* ヘッダー：保存・新規ボタン */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+        <span style={{ fontSize: 13, color: "var(--c-muted)" }}>
+          {eventId ? `ID: ${eventId}` : "新規イベント"}
+        </span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={handleNew} style={{
+            fontSize: 13, padding: "6px 14px", borderRadius: 8,
+            background: "var(--c-surface)", border: "0.5px solid var(--c-border)",
+            color: "var(--c-text)", cursor: "pointer"
+          }}>新規</button>
+          <button onClick={handleSave} disabled={saveStatus === "saving"} style={{
+            fontSize: 13, padding: "6px 14px", borderRadius: 8,
+            background: saveColor, border: "none",
+            color: "#fff", cursor: "pointer", fontWeight: 500
+          }}>{saveLabel}</button>
+        </div>
+      </div>
 
       <SectionLabel>イベント情報</SectionLabel>
       <Card>
@@ -312,6 +457,21 @@ export default function App() {
           <span>総コスト</span><span>{fmt(totalCost)}</span>
         </div>
       </div>
+
+      <SectionLabel>メモ</SectionLabel>
+      <Card>
+        <textarea
+          value={memo}
+          onChange={e => setMemo(e.target.value)}
+          placeholder="出展の所感・次回への引き継ぎ事項など"
+          style={{
+            width: "100%", minHeight: 100, fontSize: 13,
+            background: "var(--c-surface)", border: "none",
+            color: "var(--c-text)", borderRadius: 8, padding: 10,
+            resize: "vertical", boxSizing: "border-box"
+          }}
+        />
+      </Card>
 
     </div>
   );
