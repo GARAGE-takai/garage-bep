@@ -12,10 +12,10 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --c-bg: #1a1a18;
-    --c-card: #222220;
-    --c-surface: #2a2a28;
-    --c-border: rgba(255, 255, 255, 0.1);
+    --c-bg: #111110;
+    --c-card: #1e1e1c;
+    --c-surface: #2c2c29;
+    --c-border: rgba(255, 255, 255, 0.15);
     --c-text: #f0efe9;
     --c-muted: #888780;
     --c-accent: #85b7eb;
